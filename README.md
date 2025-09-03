@@ -7,6 +7,7 @@ A robust Laravel package for generating update ZIP files and new installation pa
 - 🚀 **Git Integration**: Automatically detects files changed between specified dates
 - 📦 **Multiple Package Types**: Generate update packages, new installation packages, or both
 - 🛡️ **Security**: Safe Git command execution with proper validation
+- 🔒 **Environment Sanitization**: Automatically sanitizes sensitive data in .env files
 - 📝 **Logging**: Comprehensive logging for debugging and monitoring
 - ⚙️ **Configurable**: Easy configuration for excluded paths and settings
 - 🎯 **Type Safety**: Full PHP 8.1+ type safety with strict typing
@@ -98,6 +99,17 @@ return [
     'output_directory' => 'storage/app/update_files',
     'git_timeout' => 300,
     'enable_logging' => true,
+    'sanitize_env' => [
+        'APP_DEBUG' => 'false',
+        'APP_SECRET' => '',
+        'APP_KEY' => '',
+        'DB_PASSWORD' => '',
+        'MAIL_PASSWORD' => '',
+        'AWS_SECRET_ACCESS_KEY' => '',
+        'PUSHER_APP_SECRET' => '',
+        'JWT_SECRET' => '',
+        'OAUTH_CLIENT_SECRET' => '',
+    ],
 ];
 ```
 
@@ -179,6 +191,7 @@ return [
 | `output_directory` | Directory for generated packages | `storage/app/update_files` |
 | `git_timeout` | Git command timeout in seconds | `300` |
 | `enable_logging` | Enable logging for debugging | `true` |
+| `sanitize_env` | Environment variables to sanitize | See config |
 
 ### Additional Files Configuration
 
@@ -200,6 +213,51 @@ The `add_update_file` option allows you to explicitly include specific files or 
 ],
 ```
 
+### Environment Sanitization
+
+The `sanitize_env` option automatically cleans sensitive data from `.env` files when they are included in packages. This is a critical security feature that ensures sensitive information doesn't leak into distributed packages.
+
+**Key Features:**
+- **Automatic Detection**: All `.env` and `.env.*` files are automatically detected and sanitized
+- **Configurable Variables**: Specify which environment variables should be sanitized
+- **Value Preservation**: Maintains proper quoting and formatting
+- **Logging**: Comprehensive logging of sanitization activities
+
+**Default Sanitized Variables:**
+```php
+'sanitize_env' => [
+    'APP_DEBUG' => 'false',        // Always set to false for production
+    'APP_SECRET' => '',            // Clear application secrets
+    'APP_KEY' => '',               // Clear encryption keys
+    'DB_PASSWORD' => '',           // Clear database passwords
+    'MAIL_PASSWORD' => '',         // Clear mail passwords
+    'AWS_SECRET_ACCESS_KEY' => '', // Clear AWS secrets
+    'PUSHER_APP_SECRET' => '',     // Clear Pusher secrets
+    'JWT_SECRET' => '',            // Clear JWT secrets
+    'OAUTH_CLIENT_SECRET' => '',   // Clear OAuth secrets
+],
+```
+
+**Example:** If your `.env` file contains:
+```bash
+APP_DEBUG=true
+DB_PASSWORD=secretpassword123
+AWS_SECRET_ACCESS_KEY=supersecretkey
+```
+
+After sanitization, it becomes:
+```bash
+APP_DEBUG=false
+DB_PASSWORD=
+AWS_SECRET_ACCESS_KEY=
+```
+
+**Security Benefits:**
+- Prevents accidental exposure of sensitive credentials
+- Ensures debug mode is disabled in distributed packages
+- Maintains application functionality while removing secrets
+- Reduces security risks in package distribution
+
 
 ## Best Practices
 
@@ -208,7 +266,8 @@ The `add_update_file` option allows you to explicitly include specific files or 
 3. **Git Repository**: Ensure you're in a Git repository before running commands
 4. **Exclusions**: Configure appropriate exclusions for your project
 5. **Custom Files**: Use `add_update_file` to include essential custom packages and dependencies
-6. **Testing**: Test generated packages in a staging environment before production use
+6. **Environment Security**: Configure `sanitize_env` to protect sensitive data in .env files
+7. **Testing**: Test generated packages in a staging environment before production use
 
 
 

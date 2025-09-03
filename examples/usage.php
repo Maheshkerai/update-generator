@@ -122,6 +122,17 @@ $config = [
     'output_directory' => 'storage/app/update_files',
     'git_timeout' => 300,
     'enable_logging' => true,
+    'sanitize_env' => [
+        'APP_DEBUG' => 'false',
+        'APP_SECRET' => '',
+        'APP_KEY' => '',
+        'DB_PASSWORD' => '',
+        'MAIL_PASSWORD' => '',
+        'AWS_SECRET_ACCESS_KEY' => '',
+        'PUSHER_APP_SECRET' => '',
+        'JWT_SECRET' => '',
+        'OAUTH_CLIENT_SECRET' => '',
+    ],
 ];
 
 echo "✅ Configuration loaded with " . count($config['exclude_update']) . " excluded paths\n";

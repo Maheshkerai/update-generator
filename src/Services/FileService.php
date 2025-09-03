@@ -423,6 +423,90 @@ final class FileService
     }
 
     /**
+     * Sanitize environment file by removing sensitive values
+     *
+     * @param string $envFilePath
+     * @return bool
+     */
+    private function sanitizeEnvFile(string $envFilePath): bool
+    {
+        try {
+            if (!File::exists($envFilePath)) {
+                return false;
+            }
+
+            $content = File::get($envFilePath);
+            $sanitizeConfig = config('update-generator.sanitize_env', []);
+
+            if (empty($sanitizeConfig)) {
+                return true; // No sanitization needed
+            }
+
+            $lines = explode("\n", $content);
+            $modifiedLines = [];
+            $modificationsCount = 0;
+
+            foreach ($lines as $line) {
+                $originalLine = $line;
+                $trimmedLine = trim($line);
+
+                // Skip empty lines and comments
+                if (empty($trimmedLine) || str_starts_with($trimmedLine, '#')) {
+                    $modifiedLines[] = $line;
+                    continue;
+                }
+
+                // Parse environment variable
+                if (str_contains($line, '=')) {
+                    [$key, $value] = explode('=', $line, 2);
+                    $key = trim($key);
+
+                    // Check if this key should be sanitized
+                    if (array_key_exists($key, $sanitizeConfig)) {
+                        $newValue = $sanitizeConfig[$key];
+                        
+                        // Handle quoted values
+                        if (str_starts_with($value, '"') && str_ends_with($value, '"')) {
+                            $newValue = '"' . $newValue . '"';
+                        } elseif (str_starts_with($value, "'") && str_ends_with($value, "'")) {
+                            $newValue = "'" . $newValue . "'";
+                        }
+
+                        $line = $key . '=' . $newValue;
+                        $modificationsCount++;
+                    }
+                }
+
+                $modifiedLines[] = $line;
+            }
+
+            if ($modificationsCount > 0) {
+                $newContent = implode("\n", $modifiedLines);
+                File::put($envFilePath, $newContent);
+
+                if (config('update-generator.enable_logging', true)) {
+                    Log::info('Environment file sanitized', [
+                        'file_path' => $envFilePath,
+                        'modifications_count' => $modificationsCount,
+                        'sanitized_keys' => array_keys($sanitizeConfig)
+                    ]);
+                }
+            }
+
+            return true;
+
+        } catch (\Exception $e) {
+            if (config('update-generator.enable_logging', true)) {
+                Log::error('Failed to sanitize environment file', [
+                    'file_path' => $envFilePath,
+                    'error' => $e->getMessage()
+                ]);
+            }
+            return false;
+        }
+    }
+
+    /**
      * Check if file should be skipped
      *
      * @param string $file
@@ -445,6 +529,46 @@ final class FileService
     }
 
     /**
+     * Check if a file is an environment file
+     *
+     * @param string $filePath
+     * @return bool
+     */
+    private function isEnvFile(string $filePath): bool
+    {
+        $filename = basename($filePath);
+        return $filename === '.env' || str_starts_with($filename, '.env.');
+    }
+
+    /**
+     * Sanitize all .env files in a directory recursively
+     *
+     * @param string $directory
+     * @return void
+     */
+    private function sanitizeEnvFilesInDirectory(string $directory): void
+    {
+        try {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($directory, \RecursiveDirectoryIterator::SKIP_DOTS)
+            );
+
+            foreach ($iterator as $file) {
+                if ($file->isFile() && $this->isEnvFile($file->getPathname())) {
+                    $this->sanitizeEnvFile($file->getPathname());
+                }
+            }
+        } catch (\Exception $e) {
+            if (config('update-generator.enable_logging', true)) {
+                Log::warning('Failed to sanitize environment files in directory', [
+                    'directory' => $directory,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+    }
+
+    /**
      * Safely copy file or directory
      *
      * @param string $source
@@ -456,10 +580,24 @@ final class FileService
         try {
             if (File::isFile($source)) {
                 File::ensureDirectoryExists(dirname($destination));
-                return File::copy($source, $destination);
+                $success = File::copy($source, $destination);
+                
+                // Check if the copied file is a .env file and sanitize it
+                if ($success && $this->isEnvFile($destination)) {
+                    $this->sanitizeEnvFile($destination);
+                }
+                
+                return $success;
             } elseif (File::isDirectory($source)) {
                 File::ensureDirectoryExists($destination);
-                return File::copyDirectory($source, $destination);
+                $success = File::copyDirectory($source, $destination);
+                
+                // If directory copy was successful, find and sanitize any .env files within
+                if ($success) {
+                    $this->sanitizeEnvFilesInDirectory($destination);
+                }
+                
+                return $success;
             }
         } catch (\Exception $e) {
             if (config('update-generator.enable_logging', true)) {
