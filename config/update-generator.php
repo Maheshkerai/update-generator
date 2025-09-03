@@ -101,4 +101,25 @@ return [
     |
     */
     'enable_logging' => true,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Environment file sanitization
+    |--------------------------------------------------------------------------
+    |
+    | When .env files are included in packages, these variables will be
+    | sanitized for security. Variables will be set to the specified values.
+    |
+    */
+    'sanitize_env' => [
+        'APP_DEBUG' => 'false',
+        'APP_SECRET' => '',
+        'APP_KEY' => '',
+        'DB_PASSWORD' => '',
+        'MAIL_PASSWORD' => '',
+        'AWS_SECRET_ACCESS_KEY' => '',
+        'PUSHER_APP_SECRET' => '',
+        'JWT_SECRET' => '',
+        'OAUTH_CLIENT_SECRET' => '',
+    ],
 ];
