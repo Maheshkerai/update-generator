@@ -30,6 +30,11 @@ final class UpdateGeneratorService
     {
         $this->validateVersions($currentVersion, $updateVersion);
 
+        // Clear all cache before generating update package
+        if (config('update-generator.clear_cache_before_generation', true)) {
+            $this->fileService->clearCache();
+        }
+
         $outputDir = $this->getOutputDirectory();
         $updatePath = $outputDir . '/update_temp';
         $versionInfoPath = $outputDir . '/version_info.php';
@@ -98,6 +103,11 @@ final class UpdateGeneratorService
     public function generateNewInstallation(string $version): array
     {
         $this->validateVersion($version);
+
+        // Clear all cache before generating new installation package
+        if (config('update-generator.clear_cache_before_generation', true)) {
+            $this->fileService->clearCache();
+        }
 
         $outputDir = $this->getOutputDirectory();
         // Use system temp directory to avoid infinite loops

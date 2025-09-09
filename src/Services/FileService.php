@@ -143,12 +143,16 @@ final class FileService
             'resources',
             'routes',
             'storage',
-            'tests'
+            'tests',
+            'vendor'
         ];
 
         $files = [
             '.env',
             '.env.example',
+            '.editorconfig',
+            '.gitattributes',
+            '.gitignore',
             'artisan',
             'composer.json',
             'composer.lock',
@@ -171,7 +175,7 @@ final class FileService
             $destDir = $destination . '/' . $dir;
             
             if (is_dir($sourceDir) && !$this->shouldSkipFile($dir, $excludePaths)) {
-                $this->copyDirectoryRecursively($sourceDir, $destDir, $excludePaths, $copiedCount);
+                $this->copyDirectoryRecursively($sourceDir, $destDir, $excludePaths, $copiedCount, $dir);
             }
         }
 
@@ -183,6 +187,11 @@ final class FileService
             if (is_file($sourceFile) && !$this->shouldSkipFile($file, $excludePaths)) {
                 if ($this->safeCopy($sourceFile, $destFile)) {
                     $copiedCount++;
+                    
+                    // Sanitize .env file after copying
+                    if ($file === '.env') {
+                        $this->sanitizeEnvFile($destFile);
+                    }
                 }
             }
         }
@@ -195,9 +204,10 @@ final class FileService
      * @param string $destination
      * @param array<string> $excludePaths
      * @param int $copiedCount
+     * @param string $relativePath
      * @return void
      */
-    private function copyDirectoryRecursively(string $source, string $destination, array $excludePaths, int &$copiedCount): void
+    private function copyDirectoryRecursively(string $source, string $destination, array $excludePaths, int &$copiedCount, string $relativePath = ''): void
     {
         if (!is_dir($source)) {
             return;
@@ -224,13 +234,14 @@ final class FileService
 
             $sourcePath = $source . '/' . $file;
             $destPath = $destination . '/' . $file;
+            $currentRelativePath = $relativePath ? $relativePath . '/' . $file : $file;
 
-            if ($this->shouldSkipFile($file, $excludePaths)) {
+            if ($this->shouldSkipFile($currentRelativePath, $excludePaths)) {
                 continue;
             }
 
             if (is_dir($sourcePath)) {
-                $this->copyDirectoryRecursively($sourcePath, $destPath, $excludePaths, $copiedCount);
+                $this->copyDirectoryRecursively($sourcePath, $destPath, $excludePaths, $copiedCount, $currentRelativePath);
             } else {
                 if ($this->safeCopy($sourcePath, $destPath)) {
                     $copiedCount++;
@@ -398,6 +409,202 @@ final class FileService
     }
 
     /**
+     * Sanitize .env file by replacing sensitive values with default values
+     *
+     * @param string $envFilePath
+     * @return void
+     */
+    public function sanitizeEnvFile(string $envFilePath): void
+    {
+        if (!config('update-generator.sanitize_env_file', true)) {
+            return;
+        }
+
+        if (!File::exists($envFilePath)) {
+            return;
+        }
+
+        $sanitizationRules = config('update-generator.env_sanitization_rules', []);
+        
+        if (empty($sanitizationRules)) {
+            return;
+        }
+
+        $envContent = File::get($envFilePath);
+        $lines = explode("\n", $envContent);
+        $sanitizedLines = [];
+
+        foreach ($lines as $line) {
+            $line = trim($line);
+            
+            // Skip empty lines and comments
+            if (empty($line) || str_starts_with($line, '#')) {
+                $sanitizedLines[] = $line;
+                continue;
+            }
+
+            // Check if line contains a variable assignment
+            if (str_contains($line, '=')) {
+                $parts = explode('=', $line, 2);
+                $variable = trim($parts[0]);
+                $originalValue = isset($parts[1]) ? trim($parts[1]) : '';
+
+                // Check if this variable should be sanitized
+                if (isset($sanitizationRules[$variable])) {
+                    $newValue = $sanitizationRules[$variable];
+                    
+                    // Handle special cases
+                    if ($variable === 'APP_KEY' && $newValue === 'base64:your-app-key-here') {
+                        // Generate a new APP_KEY for the installation
+                        $newValue = 'base64:' . base64_encode(random_bytes(32));
+                    }
+                    
+                    $sanitizedLines[] = $variable . '=' . $newValue;
+                    
+                    if (config('update-generator.enable_logging', true)) {
+                        Log::info('Environment variable sanitized', [
+                            'variable' => $variable,
+                            'original_value' => $this->maskSensitiveValue($originalValue),
+                            'new_value' => $this->maskSensitiveValue($newValue)
+                        ]);
+                    }
+                } else {
+                    $sanitizedLines[] = $line;
+                }
+            } else {
+                $sanitizedLines[] = $line;
+            }
+        }
+
+        // Write the sanitized content back to the file
+        File::put($envFilePath, implode("\n", $sanitizedLines));
+
+        if (config('update-generator.enable_logging', true)) {
+            Log::info('.env file sanitized successfully', [
+                'file_path' => $envFilePath,
+                'rules_applied' => count($sanitizationRules)
+            ]);
+        }
+    }
+
+    /**
+     * Mask sensitive values for logging
+     *
+     * @param string $value
+     * @return string
+     */
+    private function maskSensitiveValue(string $value): string
+    {
+        if (empty($value)) {
+            return '(empty)';
+        }
+
+        if (strlen($value) <= 4) {
+            return str_repeat('*', strlen($value));
+        }
+
+        return substr($value, 0, 2) . str_repeat('*', strlen($value) - 4) . substr($value, -2);
+    }
+
+    /**
+     * Clear all cache files before generating packages
+     *
+     * @return void
+     */
+    public function clearCache(): void
+    {
+        $cachePaths = [
+            'storage/framework/cache',
+            'storage/framework/views',
+            'storage/framework/sessions',
+            'bootstrap/cache',
+        ];
+
+        foreach ($cachePaths as $cachePath) {
+            $fullPath = base_path($cachePath);
+            
+            if (File::isDirectory($fullPath)) {
+                // Clear cache directory contents but keep the directory structure
+                $this->clearDirectoryContents($fullPath);
+                
+                if (config('update-generator.enable_logging', true)) {
+                    Log::info('Cache directory cleared', ['path' => $cachePath]);
+                }
+            }
+        }
+
+        // Clear Laravel application cache using Artisan commands
+        $this->runArtisanCommand('cache:clear');
+        $this->runArtisanCommand('view:clear');
+        $this->runArtisanCommand('config:clear');
+        $this->runArtisanCommand('route:clear');
+
+        if (config('update-generator.enable_logging', true)) {
+            Log::info('All cache cleared successfully');
+        }
+    }
+
+    /**
+     * Clear directory contents but keep the directory structure
+     *
+     * @param string $directory
+     * @return void
+     */
+    private function clearDirectoryContents(string $directory): void
+    {
+        if (!is_dir($directory)) {
+            return;
+        }
+
+        $files = scandir($directory);
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+
+            $filePath = $directory . '/' . $file;
+            
+            if (is_dir($filePath)) {
+                File::deleteDirectory($filePath);
+            } else {
+                unlink($filePath);
+            }
+        }
+    }
+
+    /**
+     * Run Artisan command
+     *
+     * @param string $command
+     * @return void
+     */
+    private function runArtisanCommand(string $command): void
+    {
+        try {
+            $output = [];
+            $returnCode = 0;
+            
+            exec("php artisan {$command} 2>&1", $output, $returnCode);
+            
+            if ($returnCode !== 0) {
+                if (config('update-generator.enable_logging', true)) {
+                    Log::warning('Artisan command failed', [
+                        'command' => $command,
+                        'output' => implode("\n", $output)
+                    ]);
+                }
+            }
+        } catch (\Exception $e) {
+            if (config('update-generator.enable_logging', true)) {
+                Log::warning('Failed to run Artisan command', [
+                    'command' => $command,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+    }
+
+    /**
      * Clean up temporary files
      *
      * @param array<string> $filePaths
@@ -436,6 +643,16 @@ final class FileService
             if ($file === $excluded) {
                 return true;
             }
+            
+            // Handle wildcard patterns (e.g., storage/framework/sessions/*)
+            if (str_contains($excluded, '*')) {
+                $pattern = preg_quote($excluded, '/');
+                $pattern = str_replace('\*', '.+', $pattern);
+                if (preg_match('/^' . $pattern . '$/', $file)) {
+                    return true;
+                }
+            }
+            
             // For directory paths, check if the file starts with the excluded path
             if (str_starts_with($file, $excluded . '/')) {
                 return true;
