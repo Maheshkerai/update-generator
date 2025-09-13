@@ -31,6 +31,17 @@ A robust Laravel package for generating update ZIP files and new installation pa
 composer require mahesh-kerai/update-generator
 ```
 
+## System Requirements
+
+- **PHP**: 8.1 or higher
+- **Laravel**: 9.0 or higher
+- **PHP Extensions**: 
+  - `zip` extension (for creating ZIP archives)
+  - `fileinfo` extension (for file type detection)
+- **Operating Systems**: Windows, Linux, macOS (cross-platform compatible)
+
+> **Note**: The package now uses PHP's built-in ZipArchive instead of external zip commands, making it fully compatible across all operating systems.
+
 ### 2. Publish configuration
 
 ```bash
@@ -399,7 +410,7 @@ This ensures that no cached data is included in your packages, keeping them clea
 - **Cache Management**: Automatic cache clearing before package generation
 
 ### 🛠️ Technical Improvements
-- **ZIP Creation**: Replaced PHP ZipArchive with system `zip` command for better reliability
+- **ZIP Creation**: Uses PHP's built-in ZipArchive for cross-platform compatibility (Windows, Linux, macOS)
 - **Infinite Loop Prevention**: Fixed recursive copying issues in new installation generation
 - **File System Safety**: Enhanced file copying with proper path validation and error handling
 - **Logging Enhancement**: Improved logging with masked sensitive values for security
@@ -420,7 +431,7 @@ This ensures that no cached data is included in your packages, keeping them clea
 ### Common Issues
 
 **Q: Getting "Failed to create ZIP archive" error?**
-A: This has been fixed by switching to system `zip` command. Ensure `zip` utility is installed on your system.
+A: This has been fixed by using PHP's built-in ZipArchive. Ensure the PHP zip extension is installed and enabled on your system.
 
 **Q: New installation packages missing essential directories?**
 A: Use wildcard patterns like `storage/logs/*` instead of `storage/logs` to preserve directory structure.

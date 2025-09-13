@@ -251,7 +251,7 @@ final class FileService
     }
 
     /**
-     * Create ZIP archive from directory using command line zip
+     * Create ZIP archive from directory using PHP ZipArchive
      *
      * @param string $sourcePath
      * @param string $zipPath
@@ -272,44 +272,79 @@ final class FileService
             unlink($zipPath);
         }
 
-        // Change to source directory and create zip
-        $currentDir = getcwd();
-        chdir($sourcePath);
-        
-        // Use command line zip to create archive
-        $command = sprintf(
-            'zip -r %s . 2>&1',
-            escapeshellarg($zipPath)
-        );
-        
-        $output = [];
-        $returnCode = 0;
-        exec($command, $output, $returnCode);
-        
-        // Return to original directory
-        chdir($currentDir);
-        
-        if ($returnCode !== 0) {
-            throw new UpdateGeneratorException("Failed to create ZIP archive: {$zipPath}. Output: " . implode("\n", $output));
+        // Check if ZipArchive is available
+        if (!class_exists('ZipArchive')) {
+            throw new UpdateGeneratorException("ZipArchive class is not available. Please ensure the zip extension is installed.");
         }
 
-        if (!file_exists($zipPath)) {
-            throw new UpdateGeneratorException("ZIP file was not created: {$zipPath}");
+        $zip = new ZipArchive();
+        $result = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        if ($result !== TRUE) {
+            throw new UpdateGeneratorException("Failed to create ZIP archive: {$zipPath}. Error code: {$result}");
         }
 
-        if (config('update-generator.enable_logging', true)) {
-            Log::info('ZIP archive created successfully', [
-                'source' => $sourcePath,
-                'zip_path' => $zipPath,
-                'file_size' => filesize($zipPath)
-            ]);
-        }
+        try {
+            // Add all files and directories recursively
+            $this->addDirectoryToZip($zip, $sourcePath, '');
+            
+            if (!$zip->close()) {
+                throw new UpdateGeneratorException("Failed to close ZIP archive: {$zipPath}");
+            }
 
-        return true;
+            if (!file_exists($zipPath)) {
+                throw new UpdateGeneratorException("ZIP file was not created: {$zipPath}");
+            }
+
+            if (config('update-generator.enable_logging', true)) {
+                Log::info('ZIP archive created successfully', [
+                    'source' => $sourcePath,
+                    'zip_path' => $zipPath,
+                    'file_size' => filesize($zipPath)
+                ]);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            $zip->close();
+            throw new UpdateGeneratorException("Failed to create ZIP archive: {$zipPath}. Error: " . $e->getMessage());
+        }
     }
 
     /**
-     * Create nested ZIP archive using command line zip
+     * Add directory contents to ZIP archive recursively
+     *
+     * @param ZipArchive $zip
+     * @param string $sourcePath
+     * @param string $relativePath
+     * @return void
+     */
+    private function addDirectoryToZip(ZipArchive $zip, string $sourcePath, string $relativePath): void
+    {
+        $files = scandir($sourcePath);
+        
+        foreach ($files as $file) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+            
+            $filePath = $sourcePath . '/' . $file;
+            $zipPath = $relativePath ? $relativePath . '/' . $file : $file;
+            
+            if (is_dir($filePath)) {
+                // Add empty directory
+                $zip->addEmptyDir($zipPath);
+                // Recursively add directory contents
+                $this->addDirectoryToZip($zip, $filePath, $zipPath);
+            } else {
+                // Add file to zip
+                $zip->addFile($filePath, $zipPath);
+            }
+        }
+    }
+
+    /**
+     * Create nested ZIP archive using PHP ZipArchive
      *
      * @param string $sourceZipPath
      * @param string $versionInfoPath
@@ -335,52 +370,45 @@ final class FileService
             unlink($finalZipPath);
         }
 
-        // Create temporary directory for nested zip
-        $tempDir = dirname($finalZipPath) . '/temp_nested_' . uniqid();
-        File::makeDirectory($tempDir, 0755, true);
+        // Check if ZipArchive is available
+        if (!class_exists('ZipArchive')) {
+            throw new UpdateGeneratorException("ZipArchive class is not available. Please ensure the zip extension is installed.");
+        }
+
+        $zip = new ZipArchive();
+        $result = $zip->open($finalZipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        if ($result !== TRUE) {
+            throw new UpdateGeneratorException("Failed to create final ZIP archive: {$finalZipPath}. Error code: {$result}");
+        }
 
         try {
-            // Copy files to temp directory
-            copy($sourceZipPath, $tempDir . '/source_code.zip');
-            copy($versionInfoPath, $tempDir . '/version_info.php');
-
-            // Change to temp directory and create zip
-            $currentDir = getcwd();
-            chdir($tempDir);
+            // Add the source ZIP file
+            $zip->addFile($sourceZipPath, 'source_code.zip');
             
-            $command = sprintf(
-                'zip %s source_code.zip version_info.php 2>&1',
-                escapeshellarg($finalZipPath)
-            );
+            // Add the version info file
+            $zip->addFile($versionInfoPath, 'version_info.php');
             
-            $output = [];
-            $returnCode = 0;
-            exec($command, $output, $returnCode);
-            
-            // Return to original directory
-            chdir($currentDir);
-            
-            if ($returnCode !== 0) {
-                throw new UpdateGeneratorException("Failed to create final ZIP archive: {$finalZipPath}. Output: " . implode("\n", $output));
+            if (!$zip->close()) {
+                throw new UpdateGeneratorException("Failed to close final ZIP archive: {$finalZipPath}");
             }
 
             if (!file_exists($finalZipPath)) {
                 throw new UpdateGeneratorException("Final ZIP file was not created: {$finalZipPath}");
             }
 
-        } finally {
-            // Clean up temp directory
-            File::deleteDirectory($tempDir);
-        }
+            if (config('update-generator.enable_logging', true)) {
+                Log::info('Nested ZIP archive created successfully', [
+                    'final_zip_path' => $finalZipPath,
+                    'file_size' => filesize($finalZipPath)
+                ]);
+            }
 
-        if (config('update-generator.enable_logging', true)) {
-            Log::info('Nested ZIP archive created successfully', [
-                'final_zip_path' => $finalZipPath,
-                'file_size' => filesize($finalZipPath)
-            ]);
+            return true;
+        } catch (\Exception $e) {
+            $zip->close();
+            throw new UpdateGeneratorException("Failed to create final ZIP archive: {$finalZipPath}. Error: " . $e->getMessage());
         }
-
-        return true;
     }
 
     /**
