@@ -1,5 +1,7 @@
 # Update Generator
 
+[![Latest Stable Version](http://poser.pugx.org/mahesh-kerai/update-generator/v)](https://packagist.org/packages/mahesh-kerai/update-generator) [![Total Downloads](http://poser.pugx.org/mahesh-kerai/update-generator/downloads)](https://packagist.org/packages/mahesh-kerai/update-generator) [![License](http://poser.pugx.org/mahesh-kerai/update-generator/license)](https://packagist.org/packages/mahesh-kerai/update-generator) [![PHP Version Require](http://poser.pugx.org/mahesh-kerai/update-generator/require/php)](https://packagist.org/packages/mahesh-kerai/update-generator)
+
 A robust Laravel package for generating update ZIP files and new installation packages based on Git repository changes.
 
 ## Features
