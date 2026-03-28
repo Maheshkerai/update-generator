@@ -189,9 +189,29 @@ return [
 
 ## Usage
 
-### Artisan Command
+### Interactive CLI Workflow (Recommended)
 
-Generate both update and new installation packages:
+The easiest way to generate packages is to use the interactive wizard. Simply run the command without any arguments:
+
+```bash
+php artisan update:generate
+```
+
+The command will then guide you step-by-step through the process:
+
+1. **Start Date**: Enter the beginning date for finding changed files (`YYYY-MM-DD`). 
+   *(Note: Skipped if generating a new package only).*
+2. **End Date**: Enter the ending date for finding changed files (`YYYY-MM-DD`).
+   *(Note: Skipped if generating a new package only).*
+3. **Current Version**: Enter your system's current version (e.g., `1.0.0`).
+4. **Update Version**: Enter the target update version (e.g., `1.1.0`).
+5. **Type Selection**: Choose what type of packages to generate (`both`, `update`, or `new`).
+
+Once all inputs are provided, a **Summary** will be displayed for your confirmation before generation begins.
+
+### Inline Options (Backward Compatibility)
+
+For automated systems or advanced users, you can still pass parameters directly. If all required parameters are provided, the interactive prompts will be bypassed automatically:
 
 ```bash
 php artisan update:generate \
@@ -202,94 +222,50 @@ php artisan update:generate \
     --type=both
 ```
 
-Generate only update package:
+## Input Parameters Explanation
 
-```bash
-php artisan update:generate \
-    --start_date=2025-01-01 \
-    --end_date=2025-03-31 \
-    --current_version=1.0.0 \
-    --update_version=1.1.0 \
-    --type=update
-```
+| Parameter | Format / Options | Description |
+|-----------|------------------|-------------|
+| **Start Date** | `YYYY-MM-DD` | The beginning date to check Git history for modified or created files. |
+| **End Date** | `YYYY-MM-DD` | The ending date to check Git history. |
+| **Current Version** | e.g. `1.0.0` | The current operational version of the project. Added to the generated `version_info.php`. |
+| **Update Version**| e.g. `1.1.0` | The target version after the update. |
+| **Type** | `both`, `update`, `new` | Defines the output. `update` extracts only changed files. `new` bundles the entire project. |
 
-Generate only new installation package:
+## How It Works (Workflow)
 
-```bash
-php artisan update:generate \
-    --update_version=1.1.0 \
-    --type=new
-```
+1. **Git Diff Analysis**: If generating an update package, the system runs local Git commands to identify exactly which files were modified, created, or deleted between the provided `Start Date` and `End Date`.
+2. **File Filtering**: Identified files are cross-referenced with your `exclude_update` and `add_update_file` configuration to ensure absolute correctness.
+3. **Packaging Update Files**: All applicable files are replicated into a temporary environment and bundled into a `source_code.zip` archive.
+4. **Packaging New Installation**: If requested, the system zips the entire project directory, cleanly bypassing paths marked in `exclude_new`. Furthermore, sensitive values inside `.env` are automatically sanitized.
+5. **Versioning Details**: A `version_info.php` is generated containing the input versions to assist the end-user upgrade systems.
 
-## Quick Start Guide
+## Requirements & Prerequisites
 
-### 🚀 Generate Your First Package
-
-1. **Basic Update Package:**
-```bash
-php artisan update:generate \
-    --start_date=2025-01-01 \
-    --end_date=2025-03-31 \
-    --current_version=1.0.0 \
-    --update_version=1.1.0 \
-    --type=update
-```
-
-2. **New Installation Package:**
-```bash
-php artisan update:generate \
-    --update_version=1.1.0 \
-    --type=new
-```
-
-3. **Both Packages:**
-```bash
-php artisan update:generate \
-    --start_date=2025-01-01 \
-    --end_date=2025-03-31 \
-    --current_version=1.0.0 \
-    --update_version=1.1.0 \
-    --type=both
-```
-
-### 🔒 Security Features (Automatic)
-
-- ✅ **Environment sanitization** - Sensitive data automatically removed
-- ✅ **Cache clearing** - No cached data in packages
-- ✅ **Smart exclusions** - Essential directories preserved
-- ✅ **Clean packages** - Production-ready installations
-
-### ⚙️ Customization
-
-Edit `config/update-generator.php` to:
-- Add custom files to include: `'add_update_file' => [...]`
-- Configure exclusions: `'exclude_new' => [...]`
-- Customize sanitization: `'env_sanitization_rules' => [...]`
-- Control cache clearing: `'clear_cache_before_generation' => true`
-
-## Command Options
-
-| Option | Description | Required | Default |
-|--------|-------------|----------|---------|
-| `--start_date` | Start date (YYYY-MM-DD) | For update/both | - |
-| `--end_date` | End date (YYYY-MM-DD) | For update/both | - |
-| `--current_version` | Current version number | For update/both | - |
-| `--update_version` | New version number | Always | - |
-| `--type` | Package type (update/new/both) | No | both |
+Before running the command, ensure your environment is fully prepared:
+- **Git Context:** Must be run from within an initialized Git repository.
+- **Project Setup:** Ensure `composer` dependencies are properly resolved and the application is structurally sound.
+- **Correct File Permissions:** Write permissions are required at the `output_directory` path (default: `storage/app/update_files`).
+- **Dependencies:** Standard PHP `zip` extension (ext-zip) is required for compression, and `git` CLI must be accessible in your system paths.
+- **Valid Inputs:** Dates must stringently match the `YYYY-MM-DD` format.
 
 ## Output Structure
 
+Depending on your selected **Type**, the following files and folders will be created inside the configured output directory (`storage/app/update_files` by default):
+
 ### Update Package
+Generates only changed and new files:
 ```
 Update 1.0.0-to-1.1.0.zip
-├── source_code.zip (contains changed files)
+├── source_code.zip (contains only changed project files)
 └── version_info.php (version information)
 ```
 
 ### New Installation Package
+Generates a full installation bundle with sanitized credentials:
 ```
 New_Installation_V1.1.0.zip
-└── [all project files except excluded]
+└── [all project files except excluded] (includes sanitized .env)
 ```
 
 ### Version Info File
@@ -300,6 +276,12 @@ return [
     'update_version' => '1.1.0',
 ];
 ```
+
+## Important Notes
+
+- **Seamless Backward Compatibility**: Existing CI/CD scripts using inline parameters remain 100% operational. The new interactive wizard only activates for missing inputs.
+- **Intact Core Functionality**: Only the command's input collection methodology was improved. File resolution, Git extraction, and ZIP compression logic remain fundamentally unchanged.
+- **Smart Validation**: The interactive wizard validates date formats and version inputs iteratively, rejecting incorrect strings and asking again without crashing.
 
 ## Configuration Options
 
