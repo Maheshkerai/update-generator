@@ -16,7 +16,7 @@ final class GenerateUpdateCommand extends Command
                             {--end_date= : End date (YYYY-MM-DD)} 
                             {--current_version= : Current version} 
                             {--update_version= : New version}
-                            {--type=both : Type of package to generate (update, new, both)}';
+                            {--type= : Type of package to generate (update, new, both)}';
 
     protected $description = 'Generate Laravel update and installation packages';
 
@@ -29,13 +29,59 @@ final class GenerateUpdateCommand extends Command
     public function handle(): int
     {
         try {
-            $this->validateInputs();
-
             $startDate = $this->option('start_date');
             $endDate = $this->option('end_date');
             $currentVersion = $this->option('current_version');
             $updateVersion = $this->option('update_version');
             $type = $this->option('type');
+
+            $prompted = false;
+
+            // Ask for inputs in the specified flow if missing
+            if ($type !== 'new') {
+                if (!$startDate) {
+                    $startDate = $this->promptForDate('Enter start date (format: YYYY-MM-DD)');
+                    $prompted = true;
+                }
+                if (!$endDate) {
+                    $endDate = $this->promptForDate('Enter end date (format: YYYY-MM-DD)');
+                    $prompted = true;
+                }
+                if (!$currentVersion) {
+                    $currentVersion = $this->promptForVersion('Enter current system version');
+                    $prompted = true;
+                }
+            }
+
+            if (!$updateVersion) {
+                $updateVersion = $this->promptForVersion('Enter update version');
+                $prompted = true;
+            }
+
+            if (!$type) {
+                $type = $this->promptForType('Enter type (both, update, new)');
+                $prompted = true;
+            }
+
+            // Summary confirmation for interactive flow
+            if ($prompted) {
+                $this->newLine();
+                $this->info('Confirm:');
+                if (in_array($type, ['update', 'both'])) {
+                    $this->line("Start Date: {$startDate}");
+                    $this->line("End Date: {$endDate}");
+                    $this->line("Current Version: {$currentVersion}");
+                }
+                $this->line("Update Version: {$updateVersion}");
+                $this->line("Type: {$type}");
+                
+                if (!$this->confirm('Proceed? (yes/no)', true)) {
+                    $this->info('Operation cancelled.');
+                    return self::SUCCESS;
+                }
+            }
+
+            $this->validateData($type, $startDate, $endDate, $currentVersion, $updateVersion);
 
             $this->info('🚀 Starting package generation...');
 
@@ -67,32 +113,80 @@ final class GenerateUpdateCommand extends Command
         }
     }
 
+    private function promptForDate(string $question): string
+    {
+        while (true) {
+            $date = $this->ask($question);
+            if ($this->isValidDate((string)$date)) {
+                return (string)$date;
+            }
+            $this->error('Invalid date format. Please use YYYY-MM-DD');
+        }
+    }
+
+    private function promptForVersion(string $question): string
+    {
+        while (true) {
+            $version = $this->ask($question);
+            if (!empty(trim((string)$version))) {
+                return trim((string)$version);
+            }
+            $this->error('Version cannot be empty');
+        }
+    }
+
+    private function promptForType(string $question): string
+    {
+        while (true) {
+            $type = $this->ask($question, 'both');
+            if (in_array((string)$type, ['update', 'new', 'both'], true)) {
+                return (string)$type;
+            }
+            $this->error('Invalid type. Please use update, new, or both');
+        }
+    }
+
+    private function isValidDate(?string $date): bool
+    {
+        if (empty($date)) {
+            return false;
+        }
+        $d = \DateTime::createFromFormat('Y-m-d', $date);
+        return $d && $d->format('Y-m-d') === $date;
+    }
+
     /**
      * Validate command inputs
      *
      * @throws UpdateGeneratorException
      */
-    private function validateInputs(): void
+    private function validateData(?string $type, ?string $startDate, ?string $endDate, ?string $currentVersion, ?string $updateVersion): void
     {
-        $type = $this->option('type');
-        
         if (!in_array($type, ['update', 'new', 'both'])) {
             throw new UpdateGeneratorException("Invalid type: {$type}. Use 'update', 'new', or 'both'");
         }
 
         if (in_array($type, ['update', 'both'])) {
-            if (!$this->option('start_date')) {
+            if (!$startDate) {
                 throw new UpdateGeneratorException('Start date is required for update packages');
             }
-            if (!$this->option('end_date')) {
+            if (!$this->isValidDate($startDate)) {
+                throw new UpdateGeneratorException('Invalid start date format. Please use YYYY-MM-DD');
+            }
+            
+            if (!$endDate) {
                 throw new UpdateGeneratorException('End date is required for update packages');
             }
-            if (!$this->option('current_version')) {
+            if (!$this->isValidDate($endDate)) {
+                throw new UpdateGeneratorException('Invalid end date format. Please use YYYY-MM-DD');
+            }
+            
+            if (!$currentVersion) {
                 throw new UpdateGeneratorException('Current version is required for update packages');
             }
         }
 
-        if (!$this->option('update_version')) {
+        if (!$updateVersion) {
             throw new UpdateGeneratorException('Update version is required');
         }
     }

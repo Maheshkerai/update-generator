@@ -100,13 +100,13 @@ final class FileService
         // Prevent infinite loops by checking if destination is inside source
         $realSourcePath = realpath($sourcePath);
         $realDestPath = realpath($destinationPath);
-        
+
         if ($realDestPath && str_starts_with($realDestPath, $realSourcePath)) {
             throw new UpdateGeneratorException("Destination path cannot be inside source path to prevent infinite loops");
         }
 
         $copiedCount = 0;
-        
+
         // Use a different approach for new installation - copy specific directories and files
         $this->copyInstallationFiles($sourcePath, $destinationPath, $excludePaths, $copiedCount);
 
@@ -161,7 +161,8 @@ final class FileService
             'phpunit.xml',
             'README.md',
             'webpack.mix.js',
-            'vite.config.js'
+            'vite.config.js',
+            '.htaccess'
         ];
 
         // Ensure destination directory exists
@@ -173,7 +174,7 @@ final class FileService
         foreach ($directories as $dir) {
             $sourceDir = $source . '/' . $dir;
             $destDir = $destination . '/' . $dir;
-            
+
             if (is_dir($sourceDir) && !$this->shouldSkipFile($dir, $excludePaths)) {
                 $this->copyDirectoryRecursively($sourceDir, $destDir, $excludePaths, $copiedCount, $dir);
             }
@@ -183,11 +184,11 @@ final class FileService
         foreach ($files as $file) {
             $sourceFile = $source . '/' . $file;
             $destFile = $destination . '/' . $file;
-            
+
             if (is_file($sourceFile) && !$this->shouldSkipFile($file, $excludePaths)) {
                 if ($this->safeCopy($sourceFile, $destFile)) {
                     $copiedCount++;
-                    
+
                     // Sanitize .env file after copying
                     if ($file === '.env') {
                         $this->sanitizeEnvFile($destFile);
@@ -216,7 +217,7 @@ final class FileService
         // Prevent infinite loops by checking if we're trying to copy the destination into itself
         $realSourcePath = realpath($source);
         $realDestPath = realpath($destination);
-        
+
         if ($realDestPath && str_starts_with($realDestPath, $realSourcePath)) {
             return; // Skip this directory to prevent infinite loops
         }
@@ -287,7 +288,7 @@ final class FileService
         try {
             // Add all files and directories recursively
             $this->addDirectoryToZip($zip, $sourcePath, '');
-            
+
             if (!$zip->close()) {
                 throw new UpdateGeneratorException("Failed to close ZIP archive: {$zipPath}");
             }
@@ -322,15 +323,15 @@ final class FileService
     private function addDirectoryToZip(ZipArchive $zip, string $sourcePath, string $relativePath): void
     {
         $files = scandir($sourcePath);
-        
+
         foreach ($files as $file) {
             if ($file === '.' || $file === '..') {
                 continue;
             }
-            
+
             $filePath = $sourcePath . '/' . $file;
             $zipPath = $relativePath ? $relativePath . '/' . $file : $file;
-            
+
             if (is_dir($filePath)) {
                 // Add empty directory
                 $zip->addEmptyDir($zipPath);
@@ -385,10 +386,10 @@ final class FileService
         try {
             // Add the source ZIP file
             $zip->addFile($sourceZipPath, 'source_code.zip');
-            
+
             // Add the version info file
             $zip->addFile($versionInfoPath, 'version_info.php');
-            
+
             if (!$zip->close()) {
                 throw new UpdateGeneratorException("Failed to close final ZIP archive: {$finalZipPath}");
             }
@@ -422,7 +423,7 @@ final class FileService
     public function createVersionInfo(string $currentVersion, string $updateVersion, string $filePath): bool
     {
         $content = "<?php\nreturn array('current_version' => '{$currentVersion}','update_version' => '{$updateVersion}');";
-        
+
         $result = File::put($filePath, $content);
 
         if (config('update-generator.enable_logging', true)) {
@@ -453,7 +454,7 @@ final class FileService
         }
 
         $sanitizationRules = config('update-generator.env_sanitization_rules', []);
-        
+
         if (empty($sanitizationRules)) {
             return;
         }
@@ -464,7 +465,7 @@ final class FileService
 
         foreach ($lines as $line) {
             $line = trim($line);
-            
+
             // Skip empty lines and comments
             if (empty($line) || str_starts_with($line, '#')) {
                 $sanitizedLines[] = $line;
@@ -480,15 +481,15 @@ final class FileService
                 // Check if this variable should be sanitized
                 if (isset($sanitizationRules[$variable])) {
                     $newValue = $sanitizationRules[$variable];
-                    
+
                     // Handle special cases
                     if ($variable === 'APP_KEY' && $newValue === 'base64:your-app-key-here') {
                         // Generate a new APP_KEY for the installation
                         $newValue = 'base64:' . base64_encode(random_bytes(32));
                     }
-                    
+
                     $sanitizedLines[] = $variable . '=' . $newValue;
-                    
+
                     if (config('update-generator.enable_logging', true)) {
                         Log::info('Environment variable sanitized', [
                             'variable' => $variable,
@@ -550,11 +551,11 @@ final class FileService
 
         foreach ($cachePaths as $cachePath) {
             $fullPath = base_path($cachePath);
-            
+
             if (File::isDirectory($fullPath)) {
                 // Clear cache directory contents but keep the directory structure
                 $this->clearDirectoryContents($fullPath);
-                
+
                 if (config('update-generator.enable_logging', true)) {
                     Log::info('Cache directory cleared', ['path' => $cachePath]);
                 }
@@ -591,7 +592,7 @@ final class FileService
             }
 
             $filePath = $directory . '/' . $file;
-            
+
             if (is_dir($filePath)) {
                 File::deleteDirectory($filePath);
             } else {
@@ -611,9 +612,9 @@ final class FileService
         try {
             $output = [];
             $returnCode = 0;
-            
+
             exec("php artisan {$command} 2>&1", $output, $returnCode);
-            
+
             if ($returnCode !== 0) {
                 if (config('update-generator.enable_logging', true)) {
                     Log::warning('Artisan command failed', [
@@ -671,7 +672,7 @@ final class FileService
             if ($file === $excluded) {
                 return true;
             }
-            
+
             // Handle wildcard patterns (e.g., storage/framework/sessions/*)
             if (str_contains($excluded, '*')) {
                 $pattern = preg_quote($excluded, '/');
@@ -680,7 +681,7 @@ final class FileService
                     return true;
                 }
             }
-            
+
             // For directory paths, check if the file starts with the excluded path
             if (str_starts_with($file, $excluded . '/')) {
                 return true;
@@ -718,4 +719,4 @@ final class FileService
 
         return false;
     }
-} 
+}
