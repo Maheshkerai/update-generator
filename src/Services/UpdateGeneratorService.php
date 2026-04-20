@@ -28,6 +28,50 @@ final class UpdateGeneratorService
      */
     public function generateUpdate(string $startDate, string $endDate, string $currentVersion, string $updateVersion): array
     {
+        $changedFiles = $this->gitService->getChangedFiles($startDate, $endDate);
+        
+        return $this->processUpdateGeneration(
+            $changedFiles, 
+            $currentVersion, 
+            $updateVersion, 
+            ['start_date' => $startDate, 'end_date' => $endDate]
+        );
+    }
+
+    /**
+     * Generate update package by commit range
+     *
+     * @param string $startRef
+     * @param string $endRef
+     * @param string $currentVersion
+     * @param string $updateVersion
+     * @return array<string> Generated file paths
+     * @throws GitException|UpdateGeneratorException
+     */
+    public function generateUpdateByCommitRange(string $startRef, string $endRef, string $currentVersion, string $updateVersion): array
+    {
+        $changedFiles = $this->gitService->getChangedFilesByRange($startRef, $endRef);
+        
+        return $this->processUpdateGeneration(
+            $changedFiles, 
+            $currentVersion, 
+            $updateVersion, 
+            ['start_ref' => $startRef, 'end_ref' => $endRef]
+        );
+    }
+
+    /**
+     * Process the core update package generation logic
+     *
+     * @param array<string> $changedFiles
+     * @param string $currentVersion
+     * @param string $updateVersion
+     * @param array<string, mixed> $logContext
+     * @return array<string>
+     * @throws UpdateGeneratorException
+     */
+    private function processUpdateGeneration(array $changedFiles, string $currentVersion, string $updateVersion, array $logContext = []): array
+    {
         $this->validateVersions($currentVersion, $updateVersion);
 
         // Clear all cache before generating update package
@@ -42,11 +86,8 @@ final class UpdateGeneratorService
         $finalZipPath = $outputDir . "/Update {$currentVersion}-to-{$updateVersion}.zip";
 
         try {
-            // Get changed files from Git
-            $changedFiles = $this->gitService->getChangedFiles($startDate, $endDate);
-
             if (empty($changedFiles)) {
-                throw new UpdateGeneratorException('No files found for the specified date range');
+                throw new UpdateGeneratorException('No files found for the specified range');
             }
 
             // Copy changed files
@@ -73,15 +114,13 @@ final class UpdateGeneratorService
             $this->fileService->cleanup([$updatePath, $sourceZipPath, $versionInfoPath]);
 
             if (config('update-generator.enable_logging', true)) {
-                Log::info('Update package generated successfully', [
+                Log::info('Update package generated successfully', array_merge($logContext, [
                     'current_version' => $currentVersion,
                     'update_version' => $updateVersion,
-                    'start_date' => $startDate,
-                    'end_date' => $endDate,
                     'files_processed' => count($changedFiles),
                     'files_copied' => $copiedCount,
                     'final_zip' => $finalZipPath
-                ]);
+                ]));
             }
 
             return [$finalZipPath];
@@ -159,6 +198,24 @@ final class UpdateGeneratorService
     public function generateBoth(string $startDate, string $endDate, string $currentVersion, string $updateVersion): array
     {
         $updateFiles = $this->generateUpdate($startDate, $endDate, $currentVersion, $updateVersion);
+        $installationFiles = $this->generateNewInstallation($updateVersion);
+
+        return array_merge($updateFiles, $installationFiles);
+    }
+
+    /**
+     * Generate both update and new installation packages by commit range
+     *
+     * @param string $startRef
+     * @param string $endRef
+     * @param string $currentVersion
+     * @param string $updateVersion
+     * @return array<string> Generated file paths
+     * @throws GitException|UpdateGeneratorException
+     */
+    public function generateBothByCommitRange(string $startRef, string $endRef, string $currentVersion, string $updateVersion): array
+    {
+        $updateFiles = $this->generateUpdateByCommitRange($startRef, $endRef, $currentVersion, $updateVersion);
         $installationFiles = $this->generateNewInstallation($updateVersion);
 
         return array_merge($updateFiles, $installationFiles);

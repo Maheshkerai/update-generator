@@ -6,7 +6,8 @@ A robust Laravel package for generating update ZIP files and new installation pa
 
 ## Features
 
-- 🚀 **Git Integration**: Automatically detects files changed between specified dates
+- 🚀 **Git Integration**: Automatically detects files changed between specified dates or commit ranges
+- 💻 **Modern Interactive CLI**: Stunning, boxed UI with radio-style selections for a premium developer experience
 - 📦 **Multiple Package Types**: Generate update packages, new installation packages, or both
 - 🛡️ **Security**: Safe Git command execution with proper validation
 - 🔒 **Environment Sanitization**: Automatically sanitizes sensitive data in .env files for new installations
@@ -16,6 +17,7 @@ A robust Laravel package for generating update ZIP files and new installation pa
 - 🎯 **Type Safety**: Full PHP 8.1+ type safety with strict typing
 - 📁 **Custom File Inclusion**: Explicitly include custom packages and essential files in updates
 - 🗂️ **Smart Exclusions**: Wildcard patterns for excluding directory contents while preserving structure
+- 🔄 **Commit-Based Support**: Generate updates based on specific Git SHAs (full/short)
 
 ## Minimum Requirements
 
@@ -189,30 +191,41 @@ return [
 
 ## Usage
 
-### Interactive CLI Workflow (Recommended)
+### Modern Interactive CLI Workflow (Recommended)
 
-The easiest way to generate packages is to use the interactive wizard. Simply run the command without any arguments:
+The easiest way to generate packages is to use the interactive wizard, which features a modern, boxed UI inspired by Laravel's official tools. Simply run the command without any arguments:
 
 ```bash
 php artisan update:generate
 ```
 
-The command will then guide you step-by-step through the process:
+The command will guide you through a structured, interactive process:
 
-1. **Start Date**: Enter the beginning date for finding changed files (`YYYY-MM-DD`). 
-   *(Note: Skipped if generating a new package only).*
-2. **End Date**: Enter the ending date for finding changed files (`YYYY-MM-DD`).
-   *(Note: Skipped if generating a new package only).*
-3. **Current Version**: Enter your system's current version (e.g., `1.0.0`).
-4. **Update Version**: Enter the target update version (e.g., `1.1.0`).
-5. **Type Selection**: Choose what type of packages to generate (`both`, `update`, or `new`).
+1. **Filtering Method**: Select between `Date Range` or `Commit Range` using arrow keys.
+2. **Instructional Notes**: Contextual help will appear (e.g., format reminders).
+3. **Conditional Inputs**:
+   - **Date Range Mode**: Enter **Start Date** and **End Date** (`YYYY-MM-DD`).
+   - **Commit Range Mode**: Enter **Starting Commit Reference** and **Ending Commit Reference** (Strictly SHAs only).
+4. **Current Version**: Enter your system's current version (e.g., `1.0.0`).
+5. **Update Version**: Enter the target update version (e.g., `1.1.0`).
+6. **Type Selection**: Choose `both`, `update`, or `new` using the interactive radio-style selection.
 
-Once all inputs are provided, a **Summary** will be displayed for your confirmation before generation begins.
+Once all inputs are provided, a **Confirmation Summary** will be displayed inside a structured box for your final approval.
 
-### Inline Options (Backward Compatibility)
+### Commit Range Mode Guidelines
 
-For automated systems or advanced users, you can still pass parameters directly. If all required parameters are provided, the interactive prompts will be bypassed automatically:
+When using **Commit Range Mode**, please note the following:
 
+> [!IMPORTANT]
+> **Supported References:** Only **Full Git SHAs** and **Short Git SHAs** (e.g., `a1b2c3d`) are supported.
+> 
+> **Unsupported References:** You **cannot** use full commit messages as references. Ensure the starting commit precedes the ending commit in the repository's history.
+
+### Inline Options (Backward Compatibility & Automation)
+
+For automated systems or advanced users, you can pass parameters directly. Providing these options will automatically bypass the interactive prompts:
+
+**Date-Based Example:**
 ```bash
 php artisan update:generate \
     --start_date=2025-01-01 \
@@ -222,19 +235,31 @@ php artisan update:generate \
     --type=both
 ```
 
+**Commit-Based Example:**
+```bash
+php artisan update:generate \
+    --start_commit=a1b2c3d \
+    --end_commit=e5f6g7h \
+    --current_version=1.0.0 \
+    --update_version=1.1.0 \
+    --type=update
+```
+
 ## Input Parameters Explanation
 
 | Parameter | Format / Options | Description |
 |-----------|------------------|-------------|
 | **Start Date** | `YYYY-MM-DD` | The beginning date to check Git history for modified or created files. |
 | **End Date** | `YYYY-MM-DD` | The ending date to check Git history. |
+| **Start Commit**| Full/Short SHA | The starting commit SHA reference (Full or Short). *Commit messages not allowed.* |
+| **End Commit** | Full/Short SHA | The ending commit SHA reference. *Commit messages not allowed.* |
 | **Current Version** | e.g. `1.0.0` | The current operational version of the project. Added to the generated `version_info.php`. |
 | **Update Version**| e.g. `1.1.0` | The target version after the update. |
 | **Type** | `both`, `update`, `new` | Defines the output. `update` extracts only changed files. `new` bundles the entire project. |
 
 ## How It Works (Workflow)
 
-1. **Git Diff Analysis**: If generating an update package, the system runs local Git commands to identify exactly which files were modified, created, or deleted between the provided `Start Date` and `End Date`.
+1. **Git Diff Analysis**: If generating an update package, the system runs local Git commands to identify exactly which files were modified, created, or deleted between the provided **Date Range** or **Commit Range**.
 2. **File Filtering**: Identified files are cross-referenced with your `exclude_update` and `add_update_file` configuration to ensure absolute correctness.
 3. **Packaging Update Files**: All applicable files are replicated into a temporary environment and bundled into a `source_code.zip` archive.
 4. **Packaging New Installation**: If requested, the system zips the entire project directory, cleanly bypassing paths marked in `exclude_new`. Furthermore, sensitive values inside `.env` are automatically sanitized.
@@ -387,6 +412,17 @@ This ensures that no cached data is included in your packages, keeping them clea
 10. **Sanitization Rules**: Customize `env_sanitization_rules` to match your application's needs
 
 ## Recent Updates
+
+### 💻 Modern Interactive CLI UI
+- **Stunning Visuals**: Completely redesigned interactive experience with boxed inputs and bordered containers.
+- **Radio-Style Selections**: Select filtering methods and package types using keyboard arrow keys (↑/↓) for a seamless workflow.
+- **Instructional Hints**: Built-in helper text and placeholders (e.g., `e.g. 1.0.0`) to guide users in real-time.
+- **Inline Validation**: Immediate, formatted error feedback without breaking the visual flow.
+
+### 🔄 Commit-Based Generation
+- **SHA Support**: Ability to generate updates between two specific commit references.
+- **Support**: Compatible with both **Full SHAs** and **Short SHAs**.
+- **Range Validation**: Automatic validation to ensure the starting reference precedes the ending reference.
 
 ### 🔒 Security Enhancements
 - **Environment File Sanitization**: Automatically removes sensitive data from `.env` files in new installation packages
